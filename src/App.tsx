@@ -1,20 +1,20 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import DashboardLayout from './components/DashboardLayout';
-import Dashboard from './pages/Dashboard';
-import Analytics from './pages/Analytics';
-import Customers from './pages/Customers';
-import Performance from './pages/Performance';
-import Settings from './pages/Settings';
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
+import DashboardLayout from "./components/DashboardLayout";
+import Dashboard from "./pages/Dashboard";
+import Analytics from "./pages/Analytics";
+import Customers from "./pages/Customers";
+import Performance from "./pages/Performance";
+import Settings from "./pages/Settings";
 
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#1976d2',
+      main: "#1976d2",
     },
     secondary: {
-      main: '#dc004e',
+      main: "#dc004e",
     },
   },
   typography: {

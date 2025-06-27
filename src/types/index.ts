@@ -3,7 +3,7 @@ export interface DashboardData {
   title: string;
   value: number;
   change: number;
-  changeType: 'increase' | 'decrease';
+  changeType: "increase" | "decrease";
 }
 
 export interface ChartData {
@@ -17,14 +17,14 @@ export interface MetricCard {
   value: string;
   trend: number;
   icon: string;
-  color: 'primary' | 'secondary' | 'success' | 'warning' | 'error';
+  color: "primary" | "secondary" | "success" | "warning" | "error";
 }
 
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'user';
+  role: "admin" | "manager" | "user";
   lastLogin: Date;
 }
 

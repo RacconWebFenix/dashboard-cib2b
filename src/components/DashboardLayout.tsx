@@ -1,4 +1,4 @@
-import React from 'react';
+import React from "react";
 import {
   Box,
   Drawer,
@@ -12,15 +12,15 @@ import {
   ListItemText,
   CssBaseline,
   Container,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Dashboard,
   Analytics,
   People,
   Settings,
   TrendingUp,
-} from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
+} from "@mui/icons-material";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const drawerWidth = 240;
 
@@ -33,24 +33,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const location = useLocation();
 
   const menuItems = [
-    { text: 'Dashboard', icon: <Dashboard />, path: '/' },
-    { text: 'Analytics', icon: <Analytics />, path: '/analytics' },
-    { text: 'Customers', icon: <People />, path: '/customers' },
-    { text: 'Performance', icon: <TrendingUp />, path: '/performance' },
-    { text: 'Settings', icon: <Settings />, path: '/settings' },
+    { text: "Dashboard", icon: <Dashboard />, path: "/" },
+    { text: "Analytics", icon: <Analytics />, path: "/analytics" },
+    { text: "Customers", icon: <People />, path: "/customers" },
+    { text: "Performance", icon: <TrendingUp />, path: "/performance" },
+    { text: "Settings", icon: <Settings />, path: "/settings" },
   ];
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: "flex" }}>
       <CssBaseline />
-      
+
       {/* AppBar */}
       <AppBar
         position="fixed"
         sx={{
           width: `calc(100% - ${drawerWidth}px)`,
           ml: `${drawerWidth}px`,
-          backgroundColor: '#1976d2',
+          backgroundColor: "#1976d2",
         }}
       >
         <Toolbar>
@@ -65,21 +65,24 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         sx={{
           width: drawerWidth,
           flexShrink: 0,
-          '& .MuiDrawer-paper': {
+          "& .MuiDrawer-paper": {
             width: drawerWidth,
-            boxSizing: 'border-box',
-            backgroundColor: '#f5f5f5',
+            boxSizing: "border-box",
+            backgroundColor: "#f5f5f5",
           },
         }}
         variant="permanent"
         anchor="left"
       >
         <Toolbar>
-          <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#1976d2' }}>
+          <Typography
+            variant="h6"
+            sx={{ fontWeight: "bold", color: "#1976d2" }}
+          >
             CIB2B
           </Typography>
         </Toolbar>
-        
+
         <List>
           {menuItems.map((item) => (
             <ListItem key={item.text} disablePadding>
@@ -87,24 +90,31 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 selected={location.pathname === item.path}
                 onClick={() => navigate(item.path)}
                 sx={{
-                  '&.Mui-selected': {
-                    backgroundColor: '#e3f2fd',
-                    '&:hover': {
-                      backgroundColor: '#bbdefb',
+                  "&.Mui-selected": {
+                    backgroundColor: "#e3f2fd",
+                    "&:hover": {
+                      backgroundColor: "#bbdefb",
                     },
                   },
                 }}
               >
-                <ListItemIcon sx={{ color: location.pathname === item.path ? '#1976d2' : 'inherit' }}>
+                <ListItemIcon
+                  sx={{
+                    color:
+                      location.pathname === item.path ? "#1976d2" : "inherit",
+                  }}
+                >
                   {item.icon}
                 </ListItemIcon>
-                <ListItemText 
+                <ListItemText
                   primary={item.text}
-                  sx={{ 
-                    '& .MuiListItemText-primary': {
-                      color: location.pathname === item.path ? '#1976d2' : 'inherit',
-                      fontWeight: location.pathname === item.path ? 'bold' : 'normal',
-                    }
+                  sx={{
+                    "& .MuiListItemText-primary": {
+                      color:
+                        location.pathname === item.path ? "#1976d2" : "inherit",
+                      fontWeight:
+                        location.pathname === item.path ? "bold" : "normal",
+                    },
                   }}
                 />
               </ListItemButton>
@@ -118,15 +128,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          bgcolor: '#fafafa',
+          bgcolor: "#fafafa",
           p: 3,
-          minHeight: '100vh',
+          minHeight: "100vh",
         }}
       >
         <Toolbar />
-        <Container maxWidth="xl">
-          {children}
-        </Container>
+        <Container maxWidth="xl">{children}</Container>
       </Box>
     </Box>
   );
