@@ -19,7 +19,7 @@ import TableFilters from "../components/TableFilters";
 import type { SearchParams } from "../components/TableFilters";
 import { AVAILABLE_TABLES } from "../data/tables";
 import { TableService } from "../services/tableService";
-import SQLQueryService from "../services/sqlQueryService";
+import { SQLQueryService } from "../services/sqlQueryService";
 import type { TableData } from "../types/tables";
 
 const Tables: React.FC = () => {
@@ -76,9 +76,11 @@ const Tables: React.FC = () => {
 
     try {
       // Use SQL query service para pesquisa avançada
-      const result = await SQLQueryService.executeMockQuery(
+      const result = await SQLQueryService.executeTableQuery(
+        selectedTable,
         searchParams,
-        selectedTable
+        1,
+        10
       );
 
       setTableData(result.data);

@@ -9,7 +9,7 @@ export interface SQLQueryRequest {
   orderDirection?: "ASC" | "DESC";
   page: number;
   pageSize: number;
-  joins?: SQLJoin[];
+  rawSQL?: string;
 }
 
 export interface SQLFilter {
@@ -28,265 +28,331 @@ export interface SQLFilter {
   type: "string" | "number" | "date" | "boolean";
 }
 
-export interface SQLJoin {
-  table: string;
-  on: string;
-  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
-}
-
 export interface SQLQueryResponse {
   data: TableData;
   query: string;
   executionTime: number;
   totalRecords: number;
+  success: boolean;
+  error?: string;
 }
 
+export interface N8NQueryPayload {
+  query: string;
+  tableName: string;
+  filters: SQLFilter[];
+  metadata: {
+    timestamp: string;
+    source: "dashboard-cib2b";
+    requestId: string;
+  };
+}
+
+export interface N8NQueryResponse {
+  success: boolean;
+  data?: Record<string, string | number | boolean | null>[];
+  error?: string;
+  executionTime?: number;
+  totalRecords?: number;
+  query?: string;
+}
+
+// Configuração do endpoint N8N
+const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL;
+
+if (!N8N_WEBHOOK_URL) {
+  console.warn(
+    "⚠️ VITE_N8N_WEBHOOK_URL não está configurada. Usando dados mockados."
+  );
+}
+
+/**
+ * Serviço para execução de queries SQL via N8N
+ */
 export class SQLQueryService {
-  private static readonly API_BASE_URL = "http://localhost:3001/api";
+  /**
+   * Gera um ID único para a requisição
+   */
+  private static generateRequestId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
 
   /**
-   * Converte parâmetros de pesquisa para consulta SQL
+   * Adiciona aspas duplas em volta de nomes de tabelas e colunas
    */
-  static buildSQLQuery(
-    params: SearchParams,
-    tableName: string
-  ): SQLQueryRequest {
-    return {
+  private static quoteIdentifier(identifier: string): string {
+    return `"${identifier}"`;
+  }
+
+  /**
+   * Constrói a query SQL baseada nos parâmetros
+   */
+  private static buildSQLQuery(request: SQLQueryRequest): string {
+    const {
       tableName,
-      select: this.getDefaultColumns(tableName),
-      filters: params.filters.map(this.convertFilter),
-      orderBy: params.orderBy,
-      orderDirection: params.orderDirection,
-      page: params.page,
-      pageSize: params.pageSize,
-      joins: this.getDefaultJoins(tableName),
-    };
-  }
+      select,
+      filters,
+      orderBy,
+      orderDirection,
+      page,
+      pageSize,
+    } = request;
 
-  /**
-   * Executa consulta SQL via POST
-   */
-  static async executeQuery(
-    params: SearchParams,
-    tableName: string
-  ): Promise<SQLQueryResponse> {
-    const sqlQuery = this.buildSQLQuery(params, tableName);
+    // SELECT clause com aspas duplas nas colunas
+    const selectClause =
+      select && select.length > 0
+        ? select.map((col) => this.quoteIdentifier(col)).join(", ")
+        : "*";
 
-    try {
-      const response = await fetch(`${this.API_BASE_URL}/sql/query`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Add authentication headers if needed
-          // 'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(sqlQuery),
-      });
+    // Tabela com aspas duplas
+    let query = `SELECT ${selectClause} FROM ${this.quoteIdentifier(
+      tableName
+    )}`;
 
-      if (!response.ok) {
-        throw new Error(
-          `Erro na consulta SQL: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error("Erro na execução da consulta SQL:", error);
-      throw new Error(
-        error instanceof Error
-          ? error.message
-          : "Erro desconhecido na consulta SQL"
+    // WHERE clause
+    if (filters && filters.length > 0) {
+      const whereConditions = filters.map((filter) =>
+        this.buildFilterCondition(filter)
       );
+      query += ` WHERE ${whereConditions.join(" AND ")}`;
     }
+
+    // ORDER BY clause com aspas duplas na coluna
+    if (orderBy) {
+      query += ` ORDER BY ${this.quoteIdentifier(orderBy)} ${
+        orderDirection || "ASC"
+      }`;
+    }
+
+    // LIMIT and OFFSET for pagination
+    const offset = (page - 1) * pageSize;
+    query += ` LIMIT ${pageSize} OFFSET ${offset}`;
+
+    return query;
   }
 
   /**
-   * Versão mock para demonstração
+   * Constrói uma condição de filtro SQL
    */
-  static async executeMockQuery(
-    params: SearchParams,
+  private static buildFilterCondition(filter: SQLFilter): string {
+    const { field, operator, value, type } = filter;
+
+    // Campo com aspas duplas
+    const quotedField = this.quoteIdentifier(field);
+
+    if (operator === "IS NULL" || operator === "IS NOT NULL") {
+      return `${quotedField} ${operator}`;
+    }
+
+    let formattedValue = value;
+
+    if (type === "string" && operator === "LIKE") {
+      formattedValue = `'%${value}%'`;
+    } else if (type === "string") {
+      formattedValue = `'${value}'`;
+    } else if (type === "date") {
+      formattedValue = `'${value}'`;
+    }
+
+    return `${quotedField} ${operator} ${formattedValue}`;
+  }
+
+  /**
+   * Envia query para o N8N e processa a resposta
+   */
+  private static async sendToN8N(
+    payload: N8NQueryPayload
+  ): Promise<N8NQueryResponse> {
+    if (!N8N_WEBHOOK_URL) {
+      throw new Error("N8N Webhook URL não configurada");
+    }
+
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Processa a resposta do N8N e converte para o formato esperado
+   */
+  private static processN8NResponse(
+    n8nResponse: N8NQueryResponse,
+    query: string,
     tableName: string
-  ): Promise<SQLQueryResponse> {
-    // Simula delay da API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  ): SQLQueryResponse {
+    if (!n8nResponse.success) {
+      return {
+        data: {
+          tableName,
+          columns: [],
+          rows: [],
+          totalRecords: 0,
+        },
+        query,
+        executionTime: n8nResponse.executionTime || 0,
+        totalRecords: 0,
+        success: false,
+        error: n8nResponse.error || "Erro desconhecido",
+      };
+    }
 
-    const sqlQuery = this.buildSQLQuery(params, tableName);
-    const mockQuery = this.generateSQLString(sqlQuery);
-
-    // Dados mock para ADDRESS
-    const mockData = this.generateMockAddressData(params.pageSize);
+    const data = n8nResponse.data || [];
+    const columns = data.length > 0 ? Object.keys(data[0]) : [];
+    const rows = data as Record<string, string | number | boolean | null>[];
 
     return {
       data: {
         tableName,
-        columns: this.getDefaultColumns(tableName),
-        rows: mockData,
-        totalRecords: 150, // Mock total
+        columns,
+        rows,
+        totalRecords: n8nResponse.totalRecords || data.length,
       },
-      query: mockQuery,
-      executionTime: Math.random() * 100 + 50, // 50-150ms
-      totalRecords: 150,
+      query,
+      executionTime: n8nResponse.executionTime || 0,
+      totalRecords: n8nResponse.totalRecords || data.length,
+      success: true,
     };
   }
 
   /**
-   * Converte filtro para formato SQL
+   * Executa uma query SQL via N8N
    */
-  private static convertFilter(filter: TableFilter): SQLFilter {
-    return {
+  static async executeQuery(
+    request: SQLQueryRequest
+  ): Promise<SQLQueryResponse> {
+    const startTime = performance.now();
+
+    try {
+      // Constrói a query SQL
+      const query = request.rawSQL || this.buildSQLQuery(request);
+
+      // Prepara o payload para o N8N
+      const payload: N8NQueryPayload = {
+        query,
+        tableName: request.tableName,
+        filters: request.filters,
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: "dashboard-cib2b",
+          requestId: this.generateRequestId(),
+        },
+      };
+
+      console.log("🔄 Enviando query para N8N:", {
+        url: N8N_WEBHOOK_URL,
+        payload: payload,
+      });
+
+      // Envia para o N8N
+      const n8nResponse = await this.sendToN8N(payload);
+
+      console.log("✅ Resposta do N8N recebida:", n8nResponse);
+
+      // Processa e retorna a resposta
+      return this.processN8NResponse(n8nResponse, query, request.tableName);
+    } catch (error) {
+      const executionTime = performance.now() - startTime;
+
+      console.error("❌ Erro ao executar query via N8N:", error);
+
+      return {
+        data: {
+          tableName: request.tableName,
+          columns: [],
+          rows: [],
+          totalRecords: 0,
+        },
+        query: request.rawSQL || this.buildSQLQuery(request),
+        executionTime,
+        totalRecords: 0,
+        success: false,
+        error: error instanceof Error ? error.message : "Erro desconhecido",
+      };
+    }
+  }
+
+  /**
+   * Converte filtros do componente para filtros SQL
+   */
+  static convertFiltersToSQL(searchParams: SearchParams): SQLFilter[] {
+    return searchParams.filters.map((filter: TableFilter) => ({
       field: filter.field,
-      operator: filter.operator,
+      operator: filter.operator as SQLFilter["operator"],
       value: filter.value,
       type: filter.type,
+    }));
+  }
+
+  /**
+   * Cria uma requisição SQL a partir dos parâmetros de busca
+   */
+  static createQueryRequest(
+    tableName: string,
+    searchParams: SearchParams,
+    page: number = 1,
+    pageSize: number = 10
+  ): SQLQueryRequest {
+    return {
+      tableName,
+      filters: this.convertFiltersToSQL(searchParams),
+      page,
+      pageSize,
+      orderBy: searchParams.orderBy,
+      orderDirection: searchParams.orderDirection,
     };
   }
 
   /**
-   * Gera string SQL a partir dos parâmetros
+   * Executa uma query baseada nos parâmetros de busca da tabela
    */
-  private static generateSQLString(query: SQLQueryRequest): string {
-    let sql = `SELECT ${query.select?.join(", ") || "*"}`;
-    sql += `\nFROM ${query.tableName}`;
-
-    // Joins
-    if (query.joins && query.joins.length > 0) {
-      query.joins.forEach((join) => {
-        sql += `\n${join.type} JOIN ${join.table} ON ${join.on}`;
-      });
-    }
-
-    // WHERE clause
-    if (query.filters && query.filters.length > 0) {
-      const whereConditions = query.filters.map((filter) => {
-        if (
-          filter.operator === "IS NULL" ||
-          filter.operator === "IS NOT NULL"
-        ) {
-          return `${filter.field} ${filter.operator}`;
-        }
-
-        if (filter.operator === "LIKE") {
-          return `${filter.field} LIKE '%${filter.value}%'`;
-        }
-
-        if (filter.type === "string" && filter.operator === "=") {
-          return `${filter.field} = '${filter.value}'`;
-        }
-
-        return `${filter.field} ${filter.operator} ${filter.value}`;
-      });
-
-      sql += `\nWHERE ${whereConditions.join(" AND ")}`;
-    }
-
-    // ORDER BY
-    if (query.orderBy) {
-      sql += `\nORDER BY ${query.orderBy} ${query.orderDirection || "ASC"}`;
-    }
-
-    // PAGINATION
-    const offset = query.page * query.pageSize;
-    sql += `\nLIMIT ${query.pageSize} OFFSET ${offset}`;
-
-    return sql;
+  static async executeTableQuery(
+    tableName: string,
+    searchParams: SearchParams,
+    page: number = 1,
+    pageSize: number = 10
+  ): Promise<SQLQueryResponse> {
+    const request = this.createQueryRequest(
+      tableName,
+      searchParams,
+      page,
+      pageSize
+    );
+    return this.executeQuery(request);
   }
 
   /**
-   * Colunas padrão para cada tabela
+   * Testa a conexão com o N8N
    */
-  private static getDefaultColumns(tableName: string): string[] {
-    switch (tableName) {
-      case "ADDRESS":
-        return [
-          "ID_ADDRESS",
-          "DESCRIPTION",
-          "MUNICIPAL_REGISTRATION",
-          "IS_BILLING_ADDRESS",
-          "ZIP_CODE",
-          "ADDRESS",
-          "NUMBER",
-          "COMPLEMENT",
-          "NEIGHBORHOOD",
-          "CITY",
-          "FEDERATED_UNIT",
-          "POSSIBLE_DTT_RECEIPT",
-          "ID_COMPANY",
-          "ID_OFFICE_GROUP",
-        ];
-      default:
-        return ["*"];
+  static async testConnection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const testPayload: N8NQueryPayload = {
+        query: "SELECT 1 AS test",
+        tableName: "test",
+        filters: [],
+        metadata: {
+          timestamp: new Date().toISOString(),
+          source: "dashboard-cib2b",
+          requestId: "test-connection",
+        },
+      };
+
+      const response = await this.sendToN8N(testPayload);
+      return { success: response.success };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Erro de conexão",
+      };
     }
-  }
-
-  /**
-   * Joins padrão para cada tabela
-   */
-  private static getDefaultJoins(tableName: string): SQLJoin[] {
-    switch (tableName) {
-      case "ADDRESS":
-        return [
-          {
-            table: "COMPANY",
-            on: "ADDRESS.ID_COMPANY = COMPANY.ID_COMPANY",
-            type: "LEFT",
-          },
-        ];
-      default:
-        return [];
-    }
-  }
-
-  /**
-   * Gera dados mock para ADDRESS
-   */
-  private static generateMockAddressData(
-    count: number
-  ): Record<string, string | number | boolean | null>[] {
-    const addresses = [];
-    const cities = [
-      "São Paulo",
-      "Rio de Janeiro",
-      "Belo Horizonte",
-      "Brasília",
-      "Salvador",
-    ];
-    const states = ["SP", "RJ", "MG", "DF", "BA"];
-    const neighborhoods = [
-      "Centro",
-      "Vila Nova",
-      "Jardim América",
-      "Copacabana",
-      "Savassi",
-    ];
-
-    for (let i = 0; i < count; i++) {
-      const cityIndex = i % cities.length;
-      addresses.push({
-        ID_ADDRESS: i + 1,
-        DESCRIPTION: `Endereço ${i + 1}`,
-        MUNICIPAL_REGISTRATION: `${Math.floor(Math.random() * 999999999)}`,
-        IS_BILLING_ADDRESS: i % 3 === 0,
-        ZIP_CODE: `${Math.floor(Math.random() * 90000) + 10000}-${
-          Math.floor(Math.random() * 900) + 100
-        }`,
-        ADDRESS: `Rua das Flores, ${Math.floor(Math.random() * 9000) + 1000}`,
-        NUMBER: `${Math.floor(Math.random() * 9999) + 1}`,
-        COMPLEMENT:
-          i % 4 === 0 ? `Apto ${Math.floor(Math.random() * 200) + 1}` : null,
-        NEIGHBORHOOD: neighborhoods[i % neighborhoods.length],
-        CITY: cities[cityIndex],
-        FEDERATED_UNIT: states[cityIndex],
-        POSSIBLE_DTT_RECEIPT: new Date(
-          Date.now() + Math.random() * 30 * 24 * 60 * 60 * 1000
-        ).toISOString(),
-        ID_COMPANY: Math.floor(i / 5) + 1,
-        ID_OFFICE_GROUP: Math.floor(i / 10) + 1,
-      });
-    }
-
-    return addresses;
   }
 }
-
-export default SQLQueryService;
