@@ -167,6 +167,10 @@ export class SQLQueryService {
       throw new Error("N8N Webhook URL não configurada");
     }
 
+    console.log("🚀 Iniciando requisição HTTP para N8N");
+    console.log("📍 URL de destino:", N8N_WEBHOOK_URL);
+    console.log("📝 Headers:", { "Content-Type": "application/json" });
+
     const response = await fetch(N8N_WEBHOOK_URL, {
       method: "POST",
       headers: {
@@ -175,11 +179,22 @@ export class SQLQueryService {
       body: JSON.stringify(payload),
     });
 
+    console.log("📬 Resposta HTTP recebida:");
+    console.log("📊 Status:", response.status, response.statusText);
+    console.log(
+      "📋 Headers da resposta:",
+      Object.fromEntries(response.headers.entries())
+    );
+
     if (!response.ok) {
+      console.error("❌ Erro HTTP:", response.status, response.statusText);
       throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
     }
 
-    return await response.json();
+    const jsonResponse = await response.json();
+    console.log("📦 JSON parseado da resposta:", jsonResponse);
+
+    return jsonResponse;
   }
 
   /**
@@ -190,7 +205,26 @@ export class SQLQueryService {
     query: string,
     tableName: string
   ): SQLQueryResponse {
+    console.log("🔍 Processando resposta do N8N:");
+    console.log(
+      "📋 Dados completos da resposta:",
+      JSON.stringify(n8nResponse, null, 2)
+    );
+    console.log("✅ Success:", n8nResponse.success);
+    console.log("📊 Data type:", typeof n8nResponse.data);
+    console.log("📊 Data is array:", Array.isArray(n8nResponse.data));
+    console.log("📊 Data length:", n8nResponse.data?.length || 0);
+
+    if (n8nResponse.data && n8nResponse.data.length > 0) {
+      console.log("🔍 Primeiro item dos dados:", n8nResponse.data[0]);
+      console.log(
+        "🔍 Estrutura do primeiro item:",
+        Object.keys(n8nResponse.data[0] || {})
+      );
+    }
+
     if (!n8nResponse.success) {
+      console.log("❌ Resposta de erro do N8N:", n8nResponse.error);
       return {
         data: {
           tableName,
@@ -209,6 +243,10 @@ export class SQLQueryService {
     const data = n8nResponse.data || [];
     const columns = data.length > 0 ? Object.keys(data[0]) : [];
     const rows = data as Record<string, string | number | boolean | null>[];
+
+    console.log("📋 Colunas extraídas:", columns);
+    console.log("📋 Número de linhas:", rows.length);
+    console.log("📋 Primeira linha (se existir):", rows[0] || "Nenhuma linha");
 
     return {
       data: {
@@ -248,15 +286,17 @@ export class SQLQueryService {
         },
       };
 
-      console.log("🔄 Enviando query para N8N:", {
-        url: N8N_WEBHOOK_URL,
-        payload: payload,
-      });
+      console.log("🔄 Enviando query para N8N:");
+      console.log("🌐 URL:", N8N_WEBHOOK_URL);
+      console.log("📤 Payload completo:", JSON.stringify(payload, null, 2));
+      console.log("🔍 Query SQL gerada:", query);
 
       // Envia para o N8N
       const n8nResponse = await this.sendToN8N(payload);
 
-      console.log("✅ Resposta do N8N recebida:", n8nResponse);
+      console.log("✅ Resposta bruta do N8N recebida:");
+      console.log("📨 Status da resposta: OK");
+      console.log("📦 Dados recebidos:", n8nResponse);
 
       // Processa e retorna a resposta
       return this.processN8NResponse(n8nResponse, query, request.tableName);

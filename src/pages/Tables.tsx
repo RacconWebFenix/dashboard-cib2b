@@ -18,7 +18,6 @@ import DataTable from "../components/DataTable";
 import TableFilters from "../components/TableFilters";
 import type { SearchParams } from "../components/TableFilters";
 import { AVAILABLE_TABLES } from "../data/tables";
-import { TableService } from "../services/tableService";
 import { SQLQueryService } from "../services/sqlQueryService";
 import type { TableData } from "../types/tables";
 
@@ -51,16 +50,27 @@ const Tables: React.FC = () => {
     setError("");
 
     try {
-      // Use mock data for demo - replace with actual API call
-      const data = await TableService.fetchMockTableData({
-        tableName: selectedTable,
-        page,
+      // Criar parâmetros de busca básicos (sem filtros)
+      const searchParams = {
+        filters: [], // Sem filtros - buscar todos os dados
+        orderBy: undefined,
+        orderDirection: "ASC" as const,
+        page: page + 1, // SQLQueryService usa 1-based, DataTable usa 0-based
         pageSize,
-      });
+      };
 
-      setTableData(data);
-      setLastQuery("");
-      setExecutionTime(0);
+      // Usar SQLQueryService para buscar dados reais do banco
+      const result = await SQLQueryService.executeTableQuery(
+        selectedTable,
+        searchParams,
+        page + 1, // Converter de 0-based para 1-based
+        pageSize
+      );
+
+      setTableData(result.data);
+      setLastQuery(result.query);
+      setExecutionTime(result.executionTime);
+      setUseFilters(false); // Não estamos usando filtros aqui
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar dados");
     } finally {
@@ -115,7 +125,7 @@ const Tables: React.FC = () => {
       <Alert severity="info" sx={{ mb: 3 }}>
         <strong>Tabelas disponíveis:</strong> Esta seção permite visualizar
         dados das tabelas do sistema que possuem ID_OFFICE_GROUP. Selecione uma
-        tabela abaixo para ver seus dados mockados.
+        tabela abaixo para ver seus dados do banco de dados.
       </Alert>
 
       {/* Seção de Seleção de Tabela - Sempre no topo */}

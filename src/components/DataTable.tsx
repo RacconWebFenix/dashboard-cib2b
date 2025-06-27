@@ -18,7 +18,7 @@ import type { TableData, TableColumn } from "../types/tables";
 
 interface DataTableProps {
   data: TableData | null;
-  columns: TableColumn[];
+  columns?: TableColumn[];
   loading?: boolean;
   error?: string;
   onPageChange?: (page: number, pageSize: number) => void;
@@ -26,13 +26,67 @@ interface DataTableProps {
 
 const DataTable: React.FC<DataTableProps> = ({
   data,
-  columns,
+  columns = [],
   loading = false,
   error,
   onPageChange,
 }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Gerar colunas dinamicamente baseadas nos dados reais do N8N
+  const dynamicColumns = React.useMemo(() => {
+    if (data && data.columns && data.columns.length > 0) {
+      console.log("DataTable: Generating dynamic columns from data:", {
+        dataColumns: data.columns,
+        staticColumns: columns,
+        sampleRow: data.rows[0],
+      });
+
+      return data.columns.map((columnName) => {
+        // Tentar encontrar a definição da coluna existente
+        const existingColumn = columns.find((col) => col.name === columnName);
+        if (existingColumn) {
+          return existingColumn;
+        }
+
+        // Se não encontrar, criar uma definição padrão baseada no tipo do valor
+        const sampleValue = data.rows[0]?.[columnName];
+        let type: "string" | "number" | "date" | "boolean" = "string";
+
+        if (typeof sampleValue === "boolean") {
+          type = "boolean";
+        } else if (typeof sampleValue === "number") {
+          type = "number";
+        } else if (typeof sampleValue === "string") {
+          // Verificar se é uma data (formatos ISO ou comuns)
+          if (
+            sampleValue.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/) ||
+            sampleValue.match(/^\d{4}-\d{2}-\d{2}$/) ||
+            sampleValue.match(/^\d{2}\/\d{2}\/\d{4}$/)
+          ) {
+            type = "date";
+          } else {
+            type = "string";
+          }
+        }
+
+        const dynamicColumn = {
+          name: columnName,
+          type,
+        } as TableColumn;
+
+        console.log(
+          `DataTable: Created dynamic column '${columnName}' with type '${type}' from sample value:`,
+          sampleValue
+        );
+        return dynamicColumn;
+      });
+    }
+    // Se não há dados ou colunas, retornar as colunas estáticas (fallback)
+    console.log("DataTable: Using static columns as fallback:", columns);
+    return columns;
+  }, [data, columns]);
 
   const handlePageChange = (_: unknown, newPage: number) => {
     setPage(newPage);
@@ -68,7 +122,12 @@ const DataTable: React.FC<DataTableProps> = ({
       case "date":
         if (typeof value === "string") {
           try {
-            return new Date(value).toLocaleDateString("pt-BR");
+            const date = new Date(value);
+            // Verificar se a data é válida
+            if (!isNaN(date.getTime())) {
+              return date.toLocaleDateString("pt-BR");
+            }
+            return String(value);
           } catch {
             return String(value);
           }
@@ -119,7 +178,7 @@ const DataTable: React.FC<DataTableProps> = ({
         <Table stickyHeader>
           <TableHead>
             <TableRow>
-              {columns.map((column) => (
+              {dynamicColumns.map((column) => (
                 <TableCell
                   key={column.name}
                   sx={{ fontWeight: "bold", backgroundColor: "#f5f5f5" }}
@@ -140,7 +199,7 @@ const DataTable: React.FC<DataTableProps> = ({
                   "&:hover": { backgroundColor: "#f0f0f0" },
                 }}
               >
-                {columns.map((column) => (
+                {dynamicColumns.map((column) => (
                   <TableCell key={column.name}>
                     {formatCellValue(row[column.name], column)}
                   </TableCell>
