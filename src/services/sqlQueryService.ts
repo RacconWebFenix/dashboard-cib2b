@@ -201,7 +201,7 @@ export class SQLQueryService {
    * Processa a resposta do N8N e converte para o formato esperado
    */
   private static processN8NResponse(
-    n8nResponse: N8NQueryResponse,
+    n8nResponse: any, // Aceita qualquer formato de resposta do N8N
     query: string,
     tableName: string
   ): SQLQueryResponse {
@@ -210,37 +210,64 @@ export class SQLQueryService {
       "📋 Dados completos da resposta:",
       JSON.stringify(n8nResponse, null, 2)
     );
-    console.log("✅ Success:", n8nResponse.success);
-    console.log("📊 Data type:", typeof n8nResponse.data);
-    console.log("📊 Data is array:", Array.isArray(n8nResponse.data));
-    console.log("📊 Data length:", n8nResponse.data?.length || 0);
+    console.log("📊 Tipo da resposta:", typeof n8nResponse);
+    console.log("📊 É array?:", Array.isArray(n8nResponse));
 
-    if (n8nResponse.data && n8nResponse.data.length > 0) {
-      console.log("🔍 Primeiro item dos dados:", n8nResponse.data[0]);
-      console.log(
-        "🔍 Estrutura do primeiro item:",
-        Object.keys(n8nResponse.data[0] || {})
-      );
+    let data: Record<string, string | number | boolean | null>[] = [];
+
+    // Caso 1: A resposta é diretamente um array de objetos (formato mais comum do N8N)
+    if (Array.isArray(n8nResponse)) {
+      console.log("✅ Resposta é um array direto, usando como dados");
+      data = n8nResponse;
     }
+    // Caso 2: A resposta tem o formato { success: true, data: [...] }
+    else if (
+      n8nResponse &&
+      typeof n8nResponse === "object" &&
+      n8nResponse.success !== undefined
+    ) {
+      console.log("✅ Success:", n8nResponse.success);
+      console.log("📊 Data type:", typeof n8nResponse.data);
+      console.log("� Data is array:", Array.isArray(n8nResponse.data));
+      console.log("📊 Data length:", n8nResponse.data?.length || 0);
 
-    if (!n8nResponse.success) {
-      console.log("❌ Resposta de erro do N8N:", n8nResponse.error);
-      return {
-        data: {
-          tableName,
-          columns: [],
-          rows: [],
+      if (!n8nResponse.success) {
+        console.log("❌ Resposta de erro do N8N:", n8nResponse.error);
+        return {
+          data: {
+            tableName,
+            columns: [],
+            rows: [],
+            totalRecords: 0,
+          },
+          query,
+          executionTime: n8nResponse.executionTime || 0,
           totalRecords: 0,
-        },
-        query,
-        executionTime: n8nResponse.executionTime || 0,
-        totalRecords: 0,
-        success: false,
-        error: n8nResponse.error || "Erro desconhecido",
-      };
+          success: false,
+          error: n8nResponse.error || "Erro desconhecido",
+        };
+      }
+
+      data = n8nResponse.data || [];
+    }
+    // Caso 3: A resposta é um objeto único
+    else if (n8nResponse && typeof n8nResponse === "object") {
+      console.log("✅ Resposta é um objeto único, convertendo para array");
+      data = [n8nResponse];
+    }
+    // Caso 4: Resposta vazia ou inválida
+    else {
+      console.log("⚠️ Resposta vazia ou inválida");
+      data = [];
     }
 
-    const data = n8nResponse.data || [];
+    console.log("📊 Dados processados - total de registros:", data.length);
+
+    if (data.length > 0) {
+      console.log("🔍 Primeiro item dos dados:", data[0]);
+      console.log("🔍 Estrutura do primeiro item:", Object.keys(data[0] || {}));
+    }
+
     const columns = data.length > 0 ? Object.keys(data[0]) : [];
     const rows = data as Record<string, string | number | boolean | null>[];
 
@@ -253,11 +280,11 @@ export class SQLQueryService {
         tableName,
         columns,
         rows,
-        totalRecords: n8nResponse.totalRecords || data.length,
+        totalRecords: data.length,
       },
       query,
-      executionTime: n8nResponse.executionTime || 0,
-      totalRecords: n8nResponse.totalRecords || data.length,
+      executionTime: 0,
+      totalRecords: data.length,
       success: true,
     };
   }
