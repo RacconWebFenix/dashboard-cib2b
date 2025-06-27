@@ -7,6 +7,7 @@ import Analytics from "./pages/Analytics";
 import Customers from "./pages/Customers";
 import Performance from "./pages/Performance";
 import Settings from "./pages/Settings";
+import Tables from "./pages/Tables";
 
 const theme = createTheme({
   palette: {
@@ -31,6 +32,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/analytics" element={<Analytics />} />
+            <Route path="/tables" element={<Tables />} />
             <Route path="/customers" element={<Customers />} />
             <Route path="/performance" element={<Performance />} />
             <Route path="/settings" element={<Settings />} />
