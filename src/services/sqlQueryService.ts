@@ -85,6 +85,27 @@ export class SQLQueryService {
   }
 
   /**
+   * Constrói uma query SQL COUNT para obter o total de registros
+   */
+  private static buildCountQuery(request: SQLQueryRequest): string {
+    const { tableName, filters } = request;
+
+    let query = `SELECT COUNT(*) as total_count FROM ${this.quoteIdentifier(
+      tableName
+    )}`;
+
+    // WHERE clause (mesmo filtro da query principal)
+    if (filters && filters.length > 0) {
+      const whereConditions = filters.map((filter) =>
+        this.buildFilterCondition(filter)
+      );
+      query += ` WHERE ${whereConditions.join(" AND ")}`;
+    }
+
+    return query;
+  }
+
+  /**
    * Constrói a query SQL baseada nos parâmetros
    */
   private static buildSQLQuery(request: SQLQueryRequest): string {
@@ -201,7 +222,8 @@ export class SQLQueryService {
    * Processa a resposta do N8N e converte para o formato esperado
    */
   private static processN8NResponse(
-    n8nResponse: any, // Aceita qualquer formato de resposta do N8N
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    n8nResponse: any, // Mantendo any para compatibilidade com respostas variadas do N8N
     query: string,
     tableName: string
   ): SQLQueryResponse {
@@ -298,7 +320,51 @@ export class SQLQueryService {
     const startTime = performance.now();
 
     try {
-      // Constrói a query SQL
+      let totalRecords = 0;
+
+      // Primeiro, executar query COUNT para obter total de registros
+      if (!request.rawSQL) {
+        const countQuery = this.buildCountQuery(request);
+        console.log("🔢 Executando query COUNT:", countQuery);
+
+        const countPayload: N8NQueryPayload = {
+          query: countQuery,
+          tableName: request.tableName,
+          filters: request.filters,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            source: "dashboard-cib2b",
+            requestId: this.generateRequestId() + "-count",
+          },
+        };
+
+        try {
+          const countResponse = await this.sendToN8N(countPayload);
+          console.log("📊 Resposta COUNT do N8N:", countResponse);
+
+          // Extrair o total de registros da resposta
+          if (Array.isArray(countResponse) && countResponse.length > 0) {
+            totalRecords = Number(countResponse[0].total_count) || 0;
+          } else if (
+            countResponse &&
+            countResponse.data &&
+            Array.isArray(countResponse.data) &&
+            countResponse.data.length > 0
+          ) {
+            totalRecords = Number(countResponse.data[0].total_count) || 0;
+          }
+
+          console.log("📊 Total de registros encontrados:", totalRecords);
+        } catch (countError) {
+          console.warn(
+            "⚠️ Erro ao obter total de registros, usando fallback:",
+            countError
+          );
+          // Se falhar, continuar com a query principal
+        }
+      }
+
+      // Constrói a query SQL principal
       const query = request.rawSQL || this.buildSQLQuery(request);
 
       // Prepara o payload para o N8N
@@ -313,7 +379,7 @@ export class SQLQueryService {
         },
       };
 
-      console.log("🔄 Enviando query para N8N:");
+      console.log("🔄 Enviando query principal para N8N:");
       console.log("🌐 URL:", N8N_WEBHOOK_URL);
       console.log("📤 Payload completo:", JSON.stringify(payload, null, 2));
       console.log("🔍 Query SQL gerada:", query);
@@ -326,7 +392,19 @@ export class SQLQueryService {
       console.log("📦 Dados recebidos:", n8nResponse);
 
       // Processa e retorna a resposta
-      return this.processN8NResponse(n8nResponse, query, request.tableName);
+      const result = this.processN8NResponse(
+        n8nResponse,
+        query,
+        request.tableName
+      );
+
+      // Usar o total de registros obtido da query COUNT, se disponível
+      if (totalRecords > 0) {
+        result.totalRecords = totalRecords;
+        result.data.totalRecords = totalRecords;
+      }
+
+      return result;
     } catch (error) {
       const executionTime = performance.now() - startTime;
 

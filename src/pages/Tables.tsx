@@ -28,7 +28,8 @@ const Tables: React.FC = () => {
   const [error, setError] = useState<string>("");
   const [lastQuery, setLastQuery] = useState<string>("");
   const [executionTime, setExecutionTime] = useState<number>(0);
-  const [useFilters, setUseFilters] = useState(false);
+  const [currentSearchParams, setCurrentSearchParams] =
+    useState<SearchParams | null>(null);
 
   const selectedTableDef = AVAILABLE_TABLES.find(
     (table) => table.name === selectedTable
@@ -40,7 +41,7 @@ const Tables: React.FC = () => {
     setError("");
     setLastQuery("");
     setExecutionTime(0);
-    setUseFilters(false);
+    setCurrentSearchParams(null);
   };
 
   const fetchTableData = async (page = 0, pageSize = 25) => {
@@ -50,14 +51,26 @@ const Tables: React.FC = () => {
     setError("");
 
     try {
-      // Criar parâmetros de busca básicos (sem filtros)
-      const searchParams = {
-        filters: [], // Sem filtros - buscar todos os dados
-        orderBy: undefined,
-        orderDirection: "ASC" as const,
-        page: page + 1, // SQLQueryService usa 1-based, DataTable usa 0-based
-        pageSize,
-      };
+      // Se existem filtros salvos, usar eles; senão, usar parâmetros básicos
+      let searchParams;
+
+      if (currentSearchParams) {
+        // Manter os filtros existentes, apenas atualizando page e pageSize
+        searchParams = {
+          ...currentSearchParams,
+          page: page + 1, // SQLQueryService usa 1-based, DataTable usa 0-based
+          pageSize,
+        };
+      } else {
+        // Criar parâmetros de busca básicos (sem filtros)
+        searchParams = {
+          filters: [], // Sem filtros - buscar todos os dados
+          orderBy: undefined,
+          orderDirection: "ASC" as const,
+          page: page + 1, // SQLQueryService usa 1-based, DataTable usa 0-based
+          pageSize,
+        };
+      }
 
       // Usar SQLQueryService para buscar dados reais do banco
       const result = await SQLQueryService.executeTableQuery(
@@ -70,7 +83,6 @@ const Tables: React.FC = () => {
       setTableData(result.data);
       setLastQuery(result.query);
       setExecutionTime(result.executionTime);
-      setUseFilters(false); // Não estamos usando filtros aqui
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar dados");
     } finally {
@@ -85,6 +97,9 @@ const Tables: React.FC = () => {
     setError("");
 
     try {
+      // Salvar os parâmetros de busca para usar na paginação
+      setCurrentSearchParams(searchParams);
+
       // Use SQL query service para pesquisa avançada
       const result = await SQLQueryService.executeTableQuery(
         selectedTable,
@@ -96,7 +111,6 @@ const Tables: React.FC = () => {
       setTableData(result.data);
       setLastQuery(result.query);
       setExecutionTime(result.executionTime);
-      setUseFilters(true);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Erro ao executar consulta SQL"
@@ -107,7 +121,7 @@ const Tables: React.FC = () => {
   };
 
   const handleClearFilters = () => {
-    setUseFilters(false);
+    setCurrentSearchParams(null);
     setLastQuery("");
     setExecutionTime(0);
     fetchTableData();
@@ -328,7 +342,7 @@ const Tables: React.FC = () => {
                 columns={selectedTableDef?.columns || []}
                 loading={loading}
                 error={error}
-                onPageChange={useFilters ? undefined : fetchTableData}
+                onPageChange={fetchTableData}
               />
             </CardContent>
           </Card>
