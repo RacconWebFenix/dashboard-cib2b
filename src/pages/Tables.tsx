@@ -14,12 +14,13 @@ import {
   Stack,
 } from "@mui/material";
 import { Storage, Refresh, Info } from "@mui/icons-material";
-import DataTable from "../components/DataTable";
+
 import TableFilters from "../components/TableFilters";
 import type { SearchParams } from "../components/TableFilters";
 import { AVAILABLE_TABLES } from "../data/tables";
 import { SQLQueryService } from "../services/sqlQueryService";
 import type { TableData } from "../types/tables";
+import DataTable from "../components/DataTable/DataTable";
 
 const Tables: React.FC = () => {
   const [selectedTable, setSelectedTable] = useState<string>("");
@@ -275,7 +276,7 @@ const Tables: React.FC = () => {
         />
       )}
 
-      {/* Área de Visualização de Dados - Sempre abaixo da seleção */}
+      {/* Área de Visualização de Dados */}
       <Box>
         {selectedTable ? (
           <Card>
